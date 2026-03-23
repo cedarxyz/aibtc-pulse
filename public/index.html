@@ -299,68 +299,6 @@ body {
 .stat-label { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
 .stat-sub { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
 
-/* ── Network goal ── */
-.network-goal {
-  background: var(--card-bg);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-lg);
-  padding: 14px 20px;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-.goal-label {
-  font-size: 13px;
-  color: var(--text-secondary);
-  font-weight: 500;
-  white-space: nowrap;
-}
-.goal-label strong {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-.goal-bar-wrap {
-  flex: 1;
-  height: 8px;
-  background: rgba(255,255,255,0.06);
-  border-radius: 4px;
-  overflow: hidden;
-  position: relative;
-}
-.goal-bar {
-  height: 100%;
-  border-radius: 4px;
-  background: linear-gradient(90deg, var(--orange), #eab308);
-  transition: width 1s ease-out;
-  position: relative;
-}
-.goal-bar::after {
-  content: '';
-  position: absolute;
-  right: 0; top: 0; bottom: 0; width: 20px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25));
-  border-radius: 0 4px 4px 0;
-}
-.goal-count {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-}
-.goal-count span {
-  color: var(--text-tertiary);
-  font-weight: 500;
-}
-.goal-days {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  font-weight: 500;
-}
-
 /* ── Skeleton loading ── */
 .skeleton {
   background: linear-gradient(90deg,
@@ -930,11 +868,6 @@ body {
 .activity-preview {
   font-size: 11px; color: var(--text-tertiary); line-height: 1.4;
   margin-top: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
 .activity-meta {
@@ -1003,10 +936,6 @@ body {
 
   .content { padding: 20px 16px 32px; }
   .page-subtitle { font-size: 13px; margin-bottom: 16px; }
-  .network-goal { padding: 10px 14px; gap: 10px; margin-bottom: 14px; }
-  .goal-label { font-size: 11px; }
-  .goal-count { font-size: 12px; }
-
   .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
   .stat-card { padding: 16px; }
   .stat-card-top { margin-bottom: 10px; }
@@ -1034,7 +963,7 @@ body {
   .activity-item { gap: 8px; padding: 8px 6px; }
   .activity-avatar { width: 28px; height: 28px; font-size: 9px; }
   .activity-headline { font-size: 11px; }
-  .activity-preview { font-size: 10px; -webkit-line-clamp: 1; }
+  .activity-preview { font-size: 10px; }
 
   .funnel-stages { padding: 16px; }
   .funnel-stage { margin-bottom: 12px; }
@@ -1204,16 +1133,6 @@ body {
       <span id="errorText">Unable to reach AIBTC API. Displaying cached data.</span>
     </div>
 
-    <!-- Network goal -->
-    <div class="network-goal fade-up" style="animation-delay: 0.02s">
-      <div class="goal-label">Goal by Feb 28: <strong>250 Agents</strong></div>
-      <div class="goal-bar-wrap">
-        <div class="goal-bar" id="goalBar" style="width: 0%"></div>
-      </div>
-      <div class="goal-count" id="goalCount">— <span>/ 250</span></div>
-      <div class="goal-days" id="goalDays"></div>
-    </div>
-
     <!-- Agent Messaging Pulse -->
     <div class="msg-pulse-card fade-up" style="animation-delay: 0.03s" id="msgPulseCard">
       <div class="msg-pulse-header">
@@ -1256,7 +1175,7 @@ body {
         </div>
         <div class="stat-number" id="statDensity"><div class="skeleton skeleton-number"></div></div>
         <div class="stat-label">Agent Density</div>
-        <div class="stat-sub" id="subDensity">Active agents with BTC balance</div>
+        <div class="stat-sub" id="subDensity">Agents with x402 msgs (30d)</div>
       </div>
 
       <div class="stat-card fade-up" style="animation-delay: 0.11s">
@@ -1593,6 +1512,7 @@ body {
 <script>
 const API_BASE = '/api';
 let previousData = null;
+let liveAgentCount = null;
 
 // ── Helpers ──
 function shortNum(n) {
@@ -1862,17 +1782,9 @@ async function fetchData() {
     const claimedCount = healthRes.services?.kv?.claimedCount || 0;
     const totalCheckins = agents.reduce((sum, a) => sum + (a.checkInCount || 0), 0);
 
+    liveAgentCount = agentCount;
     animateCounter(document.getElementById('statAgents'), agentCount);
     animateCounter(document.getElementById('statCheckins'), totalCheckins);
-
-    // Update network goal
-    const GOAL = 250;
-    const GOAL_DATE = new Date('2026-02-28T07:59:59Z'); // end of Feb 27 Pacific
-    const pct = Math.min(100, (agentCount / GOAL) * 100);
-    document.getElementById('goalBar').style.width = pct.toFixed(1) + '%';
-    document.getElementById('goalCount').innerHTML = `${agentCount} <span>/ ${GOAL}</span>`;
-    const daysLeft = Math.max(0, Math.ceil((GOAL_DATE - Date.now()) / 86400000));
-    document.getElementById('goalDays').textContent = daysLeft === 0 ? 'Due today' : `${daysLeft}d left`;
 
     const active7d = agents.filter(a => a.lastActiveAt && (Date.now() - new Date(a.lastActiveAt).getTime()) < 7 * 86400000).length;
     document.getElementById('subAgents').textContent = `${claimedCount} Genesis, ${agentCount - claimedCount} Registered · ${active7d} active (7d)`;
@@ -1915,7 +1827,8 @@ async function fetchDensity() {
     const data = await res.json();
     if (data.density !== undefined) {
       animateCounter(document.getElementById('statDensity'), data.density);
-      document.getElementById('subDensity').textContent = `${data.density} of ${data.totalActive} active agents hold BTC`;
+      const total = liveAgentCount || data.totalAgents;
+      document.getElementById('subDensity').textContent = `${data.density} of ${total} agents sent x402 txs (30d)`;
     }
   } catch (err) {
     console.error('Density fetch error:', err);
@@ -2617,7 +2530,7 @@ function renderMsgPulseChart(data) {
   if (!canvas || !data || !data.hourly || data.hourly.length === 0) return;
 
   const now = Date.now();
-  // Filter to buckets up to now (keys like "2026-02-21T20:15")
+  // Filter to buckets up to now (keys like "2026-02-21T20:00")
   const hourly = data.hourly.filter(b => {
     const p = b.hour.split(/[-T:]/);
     const ts = Date.UTC(+p[0], +p[1]-1, +p[2], +p[3], +p[4]);
@@ -2656,9 +2569,9 @@ function renderMsgPulseChart(data) {
     }
   }
 
-  // Size so 3 days (288 buckets) fills the visible container
+  // Size so 12 hours (144 buckets) fills the visible container, scroll for history
   const containerW = scroll.getBoundingClientRect().width;
-  const bucketsPerView = 3 * 24 * 4; // 3 days of 15-min buckets
+  const bucketsPerView = 12 * 12; // 12 hours of 5-min buckets
   const pxPerBucket = Math.max(2, containerW / bucketsPerView);
   const chartW = Math.max(containerW, Math.round(hourly.length * pxPerBucket));
   inner.style.width = chartW + 'px';
@@ -2680,30 +2593,48 @@ function renderMsgPulseChart(data) {
 
   pulseChartMeta = { hourly, values: displayValues, w, h, xPos, yPos };
 
-  // Gridlines
+  // Gridlines + Y-axis labels
   ctx.strokeStyle = 'rgba(255,255,255,0.04)';
   ctx.lineWidth = 1;
+  ctx.font = '9px -apple-system, sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
   for (let g = 0; g <= 3; g++) {
     const gy = padY + (g / 3) * (h - padY * 2);
     ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
+    // Y-axis value label (top=max, bottom=0)
+    const val = Math.round(max * (1 - g / 3));
+    if (val > 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillText(val, 4, gy);
+    }
   }
 
-  // Day boundary lines (midnight = T00:00)
+  // PST hour from key string — zero browser APIs, zero ambiguity
+  // Keys are UTC: "2026-02-24T14:00" → UTC hour 14 → PST hour 6 (UTC-8)
+  const PST = 'America/Los_Angeles';
+  function pstHourFromKey(key) {
+    return ((+key.slice(11, 13) - 8) + 24) % 24;
+  }
+
+  // Day boundary lines (PST midnight)
   for (let i = 0; i < hourly.length; i++) {
-    if (hourly[i].hour.endsWith('T00:00')) {
+    const bKey = hourly[i].hour;
+    if (!bKey.endsWith(':00')) continue;
+    if (pstHourFromKey(bKey) === 0) {
       ctx.strokeStyle = 'rgba(255,255,255,0.08)';
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(xPos(i), 0); ctx.lineTo(xPos(i), h); ctx.stroke();
     }
   }
 
-  // Outage shading (only shade if 4+ consecutive zero buckets = 1 full hour)
+  // Outage shading (shade if 12+ consecutive zero 5-min buckets = 1 hour gap)
   for (let i = 0; i < displayValues.length; i++) {
     if (displayValues[i] === 0) {
-      // Check if this is part of a sustained gap (at least 4 consecutive zeros)
+      // Check if this is part of a sustained gap (at least 12 consecutive zeros = 1h)
       let run = 0;
       for (let j = i; j < displayValues.length && displayValues[j] === 0; j++) run++;
-      if (run >= 4) {
+      if (run >= 12) {
         const x0 = i === 0 ? 0 : (xPos(i - 1) + xPos(i)) / 2;
         const endIdx = i + run - 1;
         const x1 = endIdx === displayValues.length - 1 ? w : (xPos(endIdx) + xPos(endIdx + 1)) / 2;
@@ -2714,94 +2645,49 @@ function renderMsgPulseChart(data) {
     }
   }
 
-  // Find where projected section starts (last bucket with projected value)
+  // Projected bucket detection
   const projIdx = hourly.length - 1;
   const hasProjection = hourly[projIdx] && hourly[projIdx].projected != null;
 
-  // Solid fill gradient (up to projection boundary)
-  const solidEnd = hasProjection ? projIdx : displayValues.length;
-  ctx.beginPath();
-  ctx.moveTo(xPos(0), yPos(displayValues[0]));
-  for (let i = 1; i < solidEnd; i++) {
-    const cx1 = (xPos(i - 1) + xPos(i)) / 2;
-    ctx.bezierCurveTo(cx1, yPos(displayValues[i - 1]), cx1, yPos(displayValues[i]), xPos(i), yPos(displayValues[i]));
-  }
-  if (hasProjection && solidEnd > 0) {
-    ctx.lineTo(xPos(solidEnd - 1), h);
-  } else {
-    ctx.lineTo(w, h);
-  }
-  ctx.lineTo(0, h); ctx.closePath();
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, 'rgba(168,85,247,0.18)');
-  grad.addColorStop(1, 'transparent');
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  // Projected fill (lighter, for the last bucket)
-  if (hasProjection && solidEnd > 1) {
-    ctx.beginPath();
-    const prevI = solidEnd - 1;
-    ctx.moveTo(xPos(prevI), yPos(displayValues[prevI]));
-    const cx1 = (xPos(prevI) + xPos(projIdx)) / 2;
-    ctx.bezierCurveTo(cx1, yPos(displayValues[prevI]), cx1, yPos(displayValues[projIdx]), xPos(projIdx), yPos(displayValues[projIdx]));
-    ctx.lineTo(xPos(projIdx), h);
-    ctx.lineTo(xPos(prevI), h);
-    ctx.closePath();
-    const pGrad = ctx.createLinearGradient(0, 0, 0, h);
-    pGrad.addColorStop(0, 'rgba(168,85,247,0.10)');
-    pGrad.addColorStop(1, 'transparent');
-    ctx.fillStyle = pGrad;
-    ctx.fill();
+  // Skinny bars
+  const barW = Math.max(2, pxPerBucket * 0.35);
+  for (let i = 0; i < displayValues.length; i++) {
+    const v = displayValues[i];
+    if (v === 0) continue;
+    const x = xPos(i) - barW / 2;
+    const barTop = yPos(v);
+    const barH = h - padY - barTop;
+    const isProj = hasProjection && i === projIdx;
+    ctx.fillStyle = isProj ? 'rgba(168,85,247,0.4)' : '#A855F7';
+    ctx.fillRect(x, barTop, barW, barH);
   }
 
-  // Solid line
-  ctx.beginPath();
-  ctx.moveTo(xPos(0), yPos(displayValues[0]));
-  for (let i = 1; i < solidEnd; i++) {
-    const cx1 = (xPos(i - 1) + xPos(i)) / 2;
-    ctx.bezierCurveTo(cx1, yPos(displayValues[i - 1]), cx1, yPos(displayValues[i]), xPos(i), yPos(displayValues[i]));
-  }
-  ctx.strokeStyle = '#A855F7';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  // Projected line (dashed)
-  if (hasProjection && solidEnd > 1) {
-    ctx.beginPath();
-    const prevI = solidEnd - 1;
-    ctx.moveTo(xPos(prevI), yPos(displayValues[prevI]));
-    const cx1 = (xPos(prevI) + xPos(projIdx)) / 2;
-    ctx.bezierCurveTo(cx1, yPos(displayValues[prevI]), cx1, yPos(displayValues[projIdx]), xPos(projIdx), yPos(displayValues[projIdx]));
-    ctx.strokeStyle = 'rgba(168,85,247,0.5)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4, 4]);
-    ctx.stroke();
-    ctx.setLineDash([]);
+  // Count labels above each bar (only when bars are wide enough to read)
+  if (pxPerBucket >= 8) {
+    ctx.font = '8px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    for (let i = 0; i < displayValues.length; i++) {
+      const v = displayValues[i];
+      if (v === 0) continue;
+      const labelY = Math.max(padY + 2, yPos(v) - 6);
+      ctx.fillText(v, xPos(i), labelY);
+    }
   }
 
-  // End dot
-  const lastVal = displayValues[displayValues.length - 1];
-  ctx.beginPath();
-  ctx.arc(xPos(displayValues.length - 1), yPos(lastVal), 3, 0, Math.PI * 2);
-  ctx.fillStyle = hasProjection ? 'rgba(168,85,247,0.6)' : '#A855F7';
-  ctx.fill();
-
-  // Two-tier time markers: day labels at midnight, hour labels at 6h intervals
+  // Time labels — only on :00 keys, day boundaries + 3h intervals
   let ticksHtml = '';
   for (let i = 0; i < hourly.length; i++) {
-    const key = hourly[i].hour; // "2026-02-21T18:00"
-    if (!key.endsWith(':00')) continue; // only on the hour
-    const hh = parseInt(key.slice(11, 13));
+    const key = hourly[i].hour; // "2026-02-21T18:05"
+    if (!key.endsWith(':00')) continue; // only label on the hour
+    const pstHour = pstHourFromKey(key); // 0-23 in PST
     const pct = (xPos(i) / w * 100).toFixed(3);
-    if (hh === 0) {
-      // Midnight = day boundary
+    if (pstHour === 0) {
       const d = new Date(key + ':00Z');
-      const label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+      const label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', timeZone: PST });
       ticksHtml += `<span class="msg-pulse-tick day" style="left:${pct}%"><span class="tick-line"></span><span class="tick-label">${label}</span></span>`;
-    } else if (hh % 6 === 0) {
-      // 6h intervals: 6a, 12p, 6p
-      const label = hh === 12 ? '12p' : hh < 12 ? (hh + 'a') : ((hh - 12) + 'p');
+    } else if (pstHour % 3 === 0) {
+      const label = pstHour === 12 ? '12p' : pstHour < 12 ? (pstHour + 'a') : ((pstHour - 12) + 'p');
       ticksHtml += `<span class="msg-pulse-tick hour" style="left:${pct}%"><span class="tick-line"></span><span class="tick-label">${label}</span></span>`;
     }
   }
@@ -2827,7 +2713,7 @@ function renderMsgPulseChart(data) {
     }
     const b = pulseChartMeta.hourly[closest];
     const d = new Date(b.hour + ':00Z');
-    const dayStr = d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+    const dayStr = d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles', timeZoneName: 'short' });
     const projLabel = b.projected != null ? `<div style="color:rgba(168,85,247,0.7);font-size:10px">~${b.projected} projected</div>` : '';
     tooltip.innerHTML = `<div style="font-weight:600;color:var(--text-primary)">${b.count} message${b.count !== 1 ? 's' : ''}</div>${projLabel}<div style="color:var(--text-tertiary);font-size:10px">${dayStr}</div>`;
     tooltip.classList.add('visible');
@@ -2837,7 +2723,7 @@ function renderMsgPulseChart(data) {
   inner.addEventListener('mouseleave', () => tooltip.classList.remove('visible'), { signal });
 }
 
-// Init
+// Init — stats cards first (above the fold), then pulse chart
 fetchData();
 fetchHistory();
 fetchRelayHealth();
