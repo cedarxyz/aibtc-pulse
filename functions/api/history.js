@@ -69,11 +69,15 @@ export async function onRequest(context) {
       } catch (e) { /* continue with empty */ }
     }
 
-    // 2. Fetch leaderboard for current agent count + total check-ins
-    const lb = await fetchJSON('/leaderboard');
+    // 2. Fetch leaderboard + health for current agent count + total check-ins
+    const [lb, health] = await Promise.all([
+      fetchJSON('/leaderboard'),
+      fetchJSON('/health'),
+    ]);
     const agents = lb.leaderboard || [];
     const verifiedAgents = agents.filter(a => a.verifiedAt);
-    const agentCount = verifiedAgents.length;
+    // Health endpoint has the true agent count (leaderboard may be paginated)
+    const agentCount = health?.services?.kv?.agentCount || health?.services?.kv?.registeredCount || verifiedAgents.length;
     const totalCheckins = agents.reduce((sum, a) => sum + (a.checkInCount || 0), 0);
 
     // 3. Read inbox_aggregate from KV (avoid re-fetching all inboxes)
@@ -209,13 +213,7 @@ export async function onRequest(context) {
             last[k] = Math.round((prev[k] || 0) + delta * scale);
           }
         }
-        // Project density if available
-        if (last.density !== undefined && prev.density !== undefined) {
-          const dDelta = last.density - prev.density;
-          if (dDelta > 0) {
-            last.density = Math.round(prev.density + dDelta * scale);
-          }
-        }
+        // Density is a point-in-time count, not cumulative — don't project it
         last.projected = true;
         last.hoursElapsed = Math.round(hoursElapsed * 10) / 10;
       }
