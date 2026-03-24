@@ -13,6 +13,21 @@ async function fetchJSON(path) {
   return res.json();
 }
 
+// Fetch all pages of the leaderboard (API caps at 100 per page)
+async function fetchAllAgents() {
+  const allAgents = [];
+  let offset = 0;
+  const limit = 100;
+  while (true) {
+    const data = await fetchJSON(`/leaderboard?limit=${limit}&offset=${offset}`);
+    const page = data.leaderboard || [];
+    allAgents.push(...page);
+    if (!data.pagination?.hasMore || page.length === 0) break;
+    offset += limit;
+  }
+  return allAgents;
+}
+
 // ── DST-aware Pacific Time helpers ──
 const pacificFmt = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Los_Angeles',
@@ -69,14 +84,13 @@ export async function onRequest(context) {
       } catch (e) { /* continue with empty */ }
     }
 
-    // 2. Fetch leaderboard + health for current agent count + total check-ins
-    const [lb, health] = await Promise.all([
-      fetchJSON('/leaderboard'),
+    // 2. Fetch all agents (paginated) + health for authoritative count
+    const [agents, health] = await Promise.all([
+      fetchAllAgents(),
       fetchJSON('/health'),
     ]);
-    const agents = lb.leaderboard || [];
     const verifiedAgents = agents.filter(a => a.verifiedAt);
-    // Health endpoint has the true agent count (leaderboard may be paginated)
+    // Health endpoint is authoritative; fall back to full leaderboard count
     const agentCount = health?.services?.kv?.agentCount || health?.services?.kv?.registeredCount || verifiedAgents.length;
     const totalCheckins = agents.reduce((sum, a) => sum + (a.checkInCount || 0), 0);
 
@@ -108,6 +122,25 @@ export async function onRequest(context) {
       const day = pacificDateStr(new Date(a.verifiedAt).getTime());
       if (!snapshots[day]) {
         snapshots[day] = { agents: 0, checkins: 0, messages: 0, sats: 0, seeded: true };
+      }
+    }
+
+    // 5b. Backfill agent counts for ALL snapshots using verifiedAt dates
+    //     The leaderboard was paginated, so older "real" snapshots may have
+    //     an agent count capped at ~100. Recompute from verifiedAt for accuracy.
+    for (const date of Object.keys(snapshots)) {
+      const countByDate = verifiedAgents.filter(a =>
+        pacificDateStr(new Date(a.verifiedAt).getTime()) <= date
+      ).length;
+      // Use the higher of: health-derived count (for today), verifiedAt count,
+      // or the existing snapshot value (in case leaderboard is incomplete)
+      const existing = snapshots[date].agents || 0;
+      if (date === today) {
+        // Today: trust the health endpoint's authoritative count
+        snapshots[date].agents = agentCount;
+      } else if (countByDate > existing) {
+        // Past days: use verifiedAt count if it's higher than the stored value
+        snapshots[date].agents = countByDate;
       }
     }
 
@@ -206,7 +239,8 @@ export async function onRequest(context) {
 
       if (hoursElapsed > 0.5 && hoursElapsed < 23.5) {
         const scale = 24 / hoursElapsed;
-        const keys = ['agents', 'checkins', 'messages', 'sats'];
+        // Agents is a point-in-time count, not a cumulative rate — don't project it
+        const keys = ['checkins', 'messages', 'sats'];
         for (const k of keys) {
           const delta = (last[k] || 0) - (prev[k] || 0);
           if (delta > 0) {
