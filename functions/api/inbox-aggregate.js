@@ -5,12 +5,37 @@
 const API_BASE = 'https://aibtc.com/api';
 const CACHE_KEY = 'inbox_aggregate';
 const CACHE_TTL = 180; // 3 minutes — short enough to catch new messages quickly
+const FETCH_TIMEOUT = 8000;
 
-async function fetchJSON(path) {
-  const res = await fetch(API_BASE + path, {
-    headers: { 'Accept': 'application/json', 'User-Agent': 'aibtc-dashboard/1.0' },
-  });
-  return res.json();
+async function fetchJSON(path, timeout = FETCH_TIMEOUT) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  try {
+    const res = await fetch(API_BASE + path, {
+      headers: { 'Accept': 'application/json', 'User-Agent': 'aibtc-dashboard/1.0' },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      console.error(`Timeout fetching ${path}`);
+    }
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// Safely parse a timestamp, returning 0 on invalid dates
+function parseTimestamp(ts) {
+  if (!ts) return 0;
+  try {
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+  } catch {
+    return 0;
+  }
 }
 
 // Paginate through all inbox messages for an agent
@@ -115,8 +140,9 @@ export async function onRequest(context) {
     for (const { msg } of msgMap.values()) {
       totalSats += msg.paymentSatoshis || 0;
       // Bucket messages into 15-min intervals for relay-health chart
-      if (msg.sentAt) {
-        const d = new Date(msg.sentAt);
+      const ts = parseTimestamp(msg.sentAt);
+      if (ts > 0) {
+        const d = new Date(ts);
         const q = Math.floor(d.getUTCMinutes() / 15) * 15;
         const key = d.toISOString().slice(0, 11)
           + String(d.getUTCHours()).padStart(2, '0') + ':'
@@ -147,7 +173,7 @@ export async function onRequest(context) {
     }
 
     // Sort by time descending, keep top 50
-    recentEvents.sort((a, b) => new Date(b.time) - new Date(a.time));
+    recentEvents.sort((a, b) => parseTimestamp(b.time) - parseTimestamp(a.time));
     const topEvents = recentEvents.slice(0, 50);
 
     const result = {

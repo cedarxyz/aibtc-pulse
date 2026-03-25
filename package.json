@@ -1,0 +1,13 @@
+{
+  "name": "aibtc-pulse",
+  "version": "1.0.0",
+  "description": "AIBTC Pulse Dashboard - Agent metrics and activity tracking",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/inbox-client.test.js && node tests/agent-density.test.js",
+    "test:inbox": "node tests/inbox-client.test.js",
+    "test:density": "node tests/agent-density.test.js"
+  },
+  "keywords": ["aibtc", "bitcoin", "stacks", "agents", "dashboard"],
+  "license": "MIT"
+}
