@@ -46,11 +46,19 @@ async function refreshDensity(kv) {
     try { await kv.put(LOCK_KEY, '1', { expirationTtl: LOCK_TTL }); } catch (e) { /* continue */ }
   }
   try {
-    // Fetch leaderboard for agent list
-    const lb = await fetchJSON(API_BASE + '/leaderboard');
-    if (!lb?.leaderboard) throw new Error('Failed to fetch leaderboard');
-
-    const agents = lb.leaderboard;
+    // Fetch all agents (paginated — leaderboard caps at 100 per page)
+    const agents = [];
+    let offset = 0;
+    const limit = 100;
+    while (true) {
+      const data = await fetchJSON(API_BASE + `/leaderboard?limit=${limit}&offset=${offset}`);
+      if (!data?.leaderboard) break;
+      const page = data.leaderboard;
+      agents.push(...page);
+      if (!data.pagination?.hasMore || page.length === 0) break;
+      offset += limit;
+    }
+    if (agents.length === 0) throw new Error('Failed to fetch leaderboard');
     const now = Date.now();
     const THIRTY_DAYS = 30 * 86400000;
     const cutoff = now - THIRTY_DAYS;
@@ -60,12 +68,19 @@ async function refreshDensity(kv) {
       if (a.btcAddress) nameMap[a.btcAddress] = a.displayName || 'Unknown';
     }
 
-    const addrs = agents.map(a => a.btcAddress).filter(Boolean);
+    const allAddrs = agents.map(a => a.btcAddress).filter(Boolean);
 
-    // Fetch all inboxes and find agents who SENT paid x402 messages in last 30 days
+    // All registered agents count as valid recipients
+    const agentAddrSet = new Set(allAddrs);
+
+    // Only scan inboxes of agents active in the last 30 days (skip inactive/dormant ones)
+    const addrs = agents
+      .filter(a => a.btcAddress && a.lastActiveAt && (now - new Date(a.lastActiveAt).getTime()) < THIRTY_DAYS)
+      .map(a => a.btcAddress);
+
+    // Fetch inboxes and find agents who SENT paid x402 messages in last 30 days
     const activeMessagers = new Map();
-    const agentAddrSet = new Set(addrs);
-    const BATCH_SIZE = 6;
+    const BATCH_SIZE = 10;
 
     for (let i = 0; i < addrs.length; i += BATCH_SIZE) {
       const batch = addrs.slice(i, i + BATCH_SIZE);
