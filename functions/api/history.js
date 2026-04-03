@@ -4,7 +4,10 @@
 
 const API_BASE = 'https://aibtc.com/api';
 const CACHE_KEY = 'timeline_cache';
-const CACHE_TTL = 300; // 5 minutes
+const FRESH_MS = 5 * 60 * 1000;  // 5 minutes — consider stale after this
+const KV_TTL = 1800;              // 30 minutes — keep in KV for stale serving
+const LOCK_KEY = 'timeline_refreshing';
+const LOCK_TTL = 60;              // 1 minute lock to prevent stampede
 
 async function fetchJSON(path) {
   const res = await fetch(API_BASE + path, {
@@ -53,24 +56,12 @@ const HEADERS = {
   'Access-Control-Allow-Origin': '*',
 };
 
-export async function onRequest(context) {
-  const kv = context.env?.PULSE_KV;
-
-  const url = new URL(context.request.url);
-  const skipCache = url.searchParams.get('fresh') === 'true';
-
-  // Check cache first (skip if ?fresh=true)
-  if (kv && !skipCache) {
-    try {
-      const cached = await kv.get(CACHE_KEY, { type: 'json' });
-      if (cached) {
-        return Response.json({ ...cached, cached: true }, { headers: HEADERS });
-      }
-    } catch (e) {
-      // KV read failed, proceed to fresh compute
-    }
+// Background-safe refresh: computes fresh timeline and writes to KV
+async function refreshTimeline(kv) {
+  // Acquire lock
+  if (kv) {
+    try { await kv.put(LOCK_KEY, '1', { expirationTtl: LOCK_TTL }); } catch (e) { /* continue */ }
   }
-
   try {
     const now = Date.now();
     const today = pacificDateStr(now);
@@ -255,13 +246,52 @@ export async function onRequest(context) {
 
     const result = { timeline, generated: now };
 
-    // Cache timeline
+    // Cache timeline with long TTL for stale serving
     if (kv) {
       try {
-        await kv.put(CACHE_KEY, JSON.stringify(result), { expirationTtl: CACHE_TTL });
+        await kv.put(CACHE_KEY, JSON.stringify(result), { expirationTtl: KV_TTL });
       } catch (e) { /* continue */ }
     }
 
+    return result;
+  } finally {
+    // Release lock
+    if (kv) {
+      try { await kv.delete(LOCK_KEY); } catch (e) { /* ignore */ }
+    }
+  }
+}
+
+export async function onRequest(context) {
+  const kv = context.env?.PULSE_KV;
+  const url = new URL(context.request.url);
+  const skipCache = url.searchParams.get('fresh') === 'true';
+
+  // Check cache
+  if (kv && !skipCache) {
+    try {
+      const cached = await kv.get(CACHE_KEY, { type: 'json' });
+      if (cached) {
+        const age = Date.now() - (cached.generated || 0);
+        if (age < FRESH_MS) {
+          // Fresh — return immediately
+          return Response.json({ ...cached, cached: true }, { headers: HEADERS });
+        }
+        // Stale — return immediately, refresh in background
+        const isRefreshing = await kv.get(LOCK_KEY);
+        if (!isRefreshing) {
+          context.waitUntil(refreshTimeline(kv).catch(() => {}));
+        }
+        return Response.json({ ...cached, cached: true, stale: true }, { headers: HEADERS });
+      }
+    } catch (e) {
+      // KV read failed, proceed to fresh compute
+    }
+  }
+
+  // No cache at all — must compute synchronously
+  try {
+    const result = await refreshTimeline(kv);
     return Response.json(result, { headers: HEADERS });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
