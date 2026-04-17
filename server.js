@@ -221,7 +221,25 @@ http.createServer(async (req, res) => {
   }
 
   // Serve static files
-  let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
+  const publicDir = path.join(__dirname, 'public');
+  const urlPath = req.url === '/' ? '/index.html' : req.url;
+
+  // Reject any path containing '..' to prevent directory traversal
+  if (urlPath.includes('..')) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
+  }
+
+  const filePath = path.join(publicDir, urlPath);
+
+  // Verify the resolved path is inside publicDir
+  if (!filePath.startsWith(publicDir + path.sep) && filePath !== publicDir) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
+  }
+
   const ext = path.extname(filePath);
 
   fs.readFile(filePath, (err, data) => {
